@@ -511,7 +511,7 @@ TransactionManager::update_lba_mappings(
   auto phase_latency =
     t.record_phase_latency(phase_latency_bucket_t::mapping_management);
   SUBTRACET(seastore_t, "update extent lba mappings", t);
-  return seastar::do_with(
+  co_return co_await seastar::do_with(
     std::list<LogicalChildNodeRef>(),
     std::list<CachedExtentRef>(),
     [this, &t, &pre_allocated_extents](auto &lextents, auto &pextents) {
