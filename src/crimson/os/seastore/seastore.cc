@@ -1866,7 +1866,7 @@ SeaStore::Shard::_do_transaction_step(
   if (!onodes[op->oid]) {
     const ghobject_t& oid = i.get_oid(op->oid);
     fut = seastar::coroutine::lambda(
-      [&, create, oid]() -> onode_iertr::future<OnodeRef> {
+      [this, &ctx, op, create, oid]() -> onode_iertr::future<OnodeRef> {
       auto phase_latency =
         ctx.transaction->record_phase_latency(
           phase_latency_bucket_t::metadata_lookup);
@@ -1900,7 +1900,8 @@ SeaStore::Shard::_do_transaction_step(
       //TODO: use when_all_succeed after making onode tree
       //      support parallel extents loading
       return seastar::coroutine::lambda(
-        [&, dest_oid]() -> OnodeManager::get_or_create_onode_iertr::future<> {
+        [this, &ctx, &d_onode, dest_oid]()
+        -> OnodeManager::get_or_create_onode_iertr::future<> {
         auto phase_latency =
           ctx.transaction->record_phase_latency(
             phase_latency_bucket_t::metadata_lookup);
@@ -1916,7 +1917,8 @@ SeaStore::Shard::_do_transaction_step(
       DEBUGT("op {}, get_onode dest oid={} ...",
              *ctx.transaction, (uint32_t)op->op, dest_oid);
       return seastar::coroutine::lambda(
-        [&, dest_oid]() -> OnodeManager::get_or_create_onode_iertr::future<> {
+        [this, &ctx, &d_onode, dest_oid]()
+        -> OnodeManager::get_or_create_onode_iertr::future<> {
         auto phase_latency =
           ctx.transaction->record_phase_latency(
             phase_latency_bucket_t::metadata_lookup);

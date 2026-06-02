@@ -567,19 +567,18 @@ public:
     // user must initialize the logical extent themselves.
     assert(is_user_transaction(t.get_src()));
     ext->set_seen_by_users();
-    auto phase_latency =
-      t.record_phase_latency(phase_latency_bucket_t::mapping_management);
-    return lba_manager->alloc_extent(
-      t,
-      laddr_hint,
-      *ext,
-      EXTENT_DEFAULT_REF_COUNT
-    ).si_then([ext=std::move(ext), &t, FNAME,
-               phase_latency=std::move(phase_latency)](auto &&) mutable {
-      SUBDEBUGT(seastore_tm, "allocated {}", t, *ext);
-      return alloc_extent_iertr::make_ready_future<TCachedExtentRef<T>>(
-	std::move(ext));
-    });
+    {
+      auto phase_latency =
+        t.record_phase_latency(phase_latency_bucket_t::mapping_management);
+      co_await lba_manager->alloc_extent(
+        t,
+        laddr_hint,
+        *ext,
+        EXTENT_DEFAULT_REF_COUNT
+      );
+    }
+    SUBDEBUGT(seastore_tm, "allocated {}", t, *ext);
+    co_return std::move(ext);
   }
 
   /**
@@ -1547,10 +1546,11 @@ private:
       }
     }
 
-    auto cursors = [&]() -> remap_pin_iertr::future<std::vector<LBACursorRef>> {
+    std::vector<LBACursorRef> remapped_cursors;
+    {
       auto phase_latency =
         t.record_phase_latency(phase_latency_bucket_t::mapping_management);
-      co_return co_await lba_manager->remap_mappings(
+      remapped_cursors = co_await lba_manager->remap_mappings(
         t,
         pin.get_effective_cursor_ref(),
         std::vector<remap_entry_t>(remaps.begin(), remaps.end())
@@ -1560,20 +1560,19 @@ private:
 	  "TransactionManager::remap_pin hit invalid error"
         }
       );
-    }();
-    auto refreshed_cursors = co_await std::move(cursors);
+    }
 
     std::vector<LBAMapping> ret;
     if (pin.is_indirect()) {
       co_await pin.direct_cursor->refresh();
-      for (auto &cursor : refreshed_cursors) {
+      for (auto &cursor : remapped_cursors) {
 	ret.push_back(
 	  LBAMapping::create_indirect(
 	    pin.direct_cursor,
 	    cursor));
       }
     } else {
-      for (auto &cursor : refreshed_cursors) {
+      for (auto &cursor : remapped_cursors) {
 	ret.push_back(
 	  LBAMapping::create_direct(
 	    cursor));
